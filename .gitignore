@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# Environment
+.env
+
+# Data
+data/uploads/
+data/processed/
+*.db
+
+# Node
+node_modules/
+.next/
+frontend/.next/
+frontend/node_modules/
+
+# Claude
+.claude/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
