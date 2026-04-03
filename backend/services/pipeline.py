@@ -9,8 +9,7 @@ from sqlalchemy import select
 from backend.models.database import async_session
 from backend.models.call import Call
 from backend.models.report import QAReport
-from backend.services.audio_preprocessor import preprocess_audio
-from backend.services.transcription import transcribe_and_diarize
+from backend.services.audio_preprocessor import preprocess_audio, HAS_AUDIO_LIBS
 from backend.services.fallback_stt import transcribe_with_openai_api
 from backend.services.speaker_labeler import label_speakers, format_transcript
 from backend.services.rule_engine import run_all_rules
@@ -41,15 +40,25 @@ async def process_call(call_id: str):
         try:
             # --- Stage 1: Preprocess ---
             await _update_status(db, call, "PREPROCESSING")
-            processed_path, duration = preprocess_audio(call.file_path)
-            call.duration_seconds = duration
+            if HAS_AUDIO_LIBS:
+                processed_path, duration = preprocess_audio(call.file_path)
+                call.duration_seconds = duration
+            else:
+                logger.info("Audio libs not available, skipping preprocessing")
+                processed_path = call.file_path
 
             # --- Stage 2: Transcribe + Diarize ---
             await _update_status(db, call, "TRANSCRIBING")
-            try:
-                transcription = transcribe_and_diarize(processed_path)
-            except Exception as e:
-                logger.warning(f"WhisperX failed: {e}. Trying OpenAI API fallback.")
+            if HAS_AUDIO_LIBS:
+                try:
+                    from backend.services.transcription import transcribe_and_diarize
+                    transcription = transcribe_and_diarize(processed_path)
+                except Exception as e:
+                    logger.warning(f"WhisperX failed: {e}. Trying OpenAI API fallback.")
+                    transcription = transcribe_with_openai_api(processed_path)
+                    transcription["_fallback"] = True
+            else:
+                logger.info("Using OpenAI API for transcription (cloud mode)")
                 transcription = transcribe_with_openai_api(processed_path)
                 transcription["_fallback"] = True
 
