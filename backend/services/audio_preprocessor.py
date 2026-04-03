@@ -4,11 +4,15 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-import numpy as np
-from pydub import AudioSegment
-from pydub.effects import normalize
-
 from backend.config import settings
+
+try:
+    import numpy as np
+    from pydub import AudioSegment
+    from pydub.effects import normalize
+    HAS_AUDIO_LIBS = True
+except ImportError:
+    HAS_AUDIO_LIBS = False
 
 try:
     import noisereduce as nr
@@ -44,6 +48,9 @@ def preprocess_audio(input_path: str, output_path: str | None = None) -> tuple[s
 
     Returns (output_path, duration_seconds).
     """
+    if not HAS_AUDIO_LIBS:
+        raise ImportError("Audio preprocessing requires numpy and pydub. Install full requirements.")
+
     if output_path is None:
         stem = Path(input_path).stem
         output_path = str(settings.processed_path / f"{stem}_processed.wav")
