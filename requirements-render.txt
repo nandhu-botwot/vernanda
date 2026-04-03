@@ -1,0 +1,24 @@
+# Web framework
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.18
+
+# Settings
+pydantic-settings==2.9.1
+python-dotenv==1.0.1
+
+# Database
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+alembic==1.14.1
+
+# OpenAI (used for transcription + LLM evaluation)
+openai==1.82.0
+
+# Utilities
+aiofiles==24.1.0
+python-jose==3.3.0
+httpx==0.28.1
+
+# PDF export
+reportlab==4.2.5
