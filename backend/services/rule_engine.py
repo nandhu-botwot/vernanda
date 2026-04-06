@@ -13,6 +13,12 @@ GREETING_PATTERNS = [
     r"welcome\s+to",
     r"namaste",
     r"vanakkam",
+    r"வணக்கம்",          # Tamil: vanakkam
+    r"நல்ல\s*(காலை|மாலை)",  # Tamil: good morning/evening
+    r"नमस्ते",             # Hindi: namaste
+    r"നമസ്കാരം",          # Malayalam: namaskaram
+    r"ನಮಸ್ಕಾರ",           # Kannada: namaskara
+    r"నమస్కారం",          # Telugu: namaskaram
 ]
 COMPANY_PATTERNS = [r"veranda\s*race", r"race\s*institute", r"veranda\s*learning"]
 AGENT_NAME_PATTERNS = [r"(my\s+name\s+is|this\s+is|i\s+am|i'm)\s+\w+"]

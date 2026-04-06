@@ -37,7 +37,12 @@ def label_speakers(segments: list[dict]) -> list[dict]:
         speakers[spk]["total_time"] += seg.get("end", 0) - seg.get("start", 0)
 
     if len(speakers) <= 1:
-        # Single speaker or no speaker labels
+        # No diarization available — alternate speakers based on pauses
+        # If there's a gap > 1.5s between segments, assume speaker changed
+        labeled = _label_by_pauses(segments)
+        if labeled:
+            return labeled
+        # Fallback: label all as Agent (LLM prompt handles this)
         for seg in segments:
             seg["speaker"] = "Agent"
         return segments
@@ -71,6 +76,32 @@ def label_speakers(segments: list[dict]) -> list[dict]:
             seg["speaker"] = "Agent"
         else:
             seg["speaker"] = "Customer"
+
+    return segments
+
+
+def _label_by_pauses(segments: list[dict], pause_threshold: float = 1.5) -> list[dict] | None:
+    """
+    When no diarization is available, use pauses between segments to guess speaker turns.
+    A pause > threshold seconds suggests a speaker change.
+    First speaker is assumed to be Agent.
+    """
+    if len(segments) < 2:
+        return None
+
+    current_speaker = "Agent"
+    segments[0]["speaker"] = current_speaker
+
+    for i in range(1, len(segments)):
+        gap = segments[i]["start"] - segments[i - 1]["end"]
+        if gap >= pause_threshold:
+            current_speaker = "Customer" if current_speaker == "Agent" else "Agent"
+        segments[i]["speaker"] = current_speaker
+
+    # Verify we got at least 2 speakers
+    speakers = set(s["speaker"] for s in segments)
+    if len(speakers) < 2:
+        return None
 
     return segments
 
