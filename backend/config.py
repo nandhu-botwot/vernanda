@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     # HuggingFace
     hf_auth_token: str = ""
 
+    # Sarvam AI (for Indian language STT)
+    sarvam_api_key: str = ""
+
     # Database
     database_url: str = "sqlite+aiosqlite:///./data/db/vernanda.db"
 

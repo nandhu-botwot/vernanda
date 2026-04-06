@@ -187,6 +187,123 @@ Respond with ONLY valid JSON (no markdown, no explanation outside JSON):
 {transcript}"""
 
 
+def build_full_evaluation_prompt(
+    transcript: str,
+    previous_feedback: str | None = None,
+) -> str:
+    """Build evaluation prompt for non-English calls where LLM scores ALL parameters."""
+
+    prev_feedback_section = ""
+    if previous_feedback:
+        prev_feedback_section = f"""
+## Previous QA Feedback for This Agent
+The following feedback was given in a prior evaluation. Check if any of these mistakes are REPEATED in this call:
+{previous_feedback}
+"""
+
+    return f"""## Task
+Evaluate the following sales call transcript against ALL QA parameters below. The call is in a regional Indian language (Tamil, Malayalam, Hindi, etc.) — evaluate based on the MEANING and INTENT of what was said, not the language.
+
+{prev_feedback_section}
+
+## Parameters to Score
+
+### 1. Greeting (Max: 5)
+Did the agent greet properly with name + company name (Veranda Race)?
+- 5/5: Warm greeting + agent name + "Veranda Race"
+- 3-4/5: Partial greeting (missing name or company)
+- 0-2/5: No proper greeting
+
+### 2. Probing / Customer Identification (Max: 5)
+Did the agent collect customer details: name, age, qualification, location, preferred mode (online/offline)?
+- 5/5: Asked all 5 details
+- 1 point per detail collected
+
+### 3. Primary Lead Source Identification (Max: 5)
+Did the agent ask how the customer found Veranda Race?
+- 5/5: Asked about lead source
+- 0/5: Did not ask
+
+### 4. Course Pitch & Opportunities (Max: 5)
+Did the agent pitch the suitable course based on customer's profile?
+- 5/5: Pitched correct course with posts, exam pattern, vacancies, salary
+- 3-4/5: Mentioned course and some opportunities
+- 0-2/5: Vague or no course pitching
+
+### 5. No False Commitment (Max: 5)
+PENALTY parameter. Default 5/5. Deduct for false promises like "guaranteed job", "100% selection".
+
+### 6. 6 Level Strategy Explanation (Max: 10)
+Did agent explain the 6-level practice methodology (Basic Class, Basic Circle, Extremer Circle, Superbatch, RIP, Mock Interview)?
+- ~1.7 points per level mentioned
+
+### 7. Presentation & Messaging (Max: 10)
+Overall quality of communication: professional tone, value proposition, success stories, mentor support, study materials.
+- 9-10/10: Excellent presentation
+- 6-8/10: Good with gaps
+- 3-5/10: Basic but poorly structured
+- 0-2/10: Poor communication
+
+### 8. Urgency Creation Need (Max: 10)
+Did the agent create appropriate urgency based on customer type?
+- Score based on whether urgency was needed AND correctly applied
+
+### 9. Urgency Explanation (Max: 8)
+Did the agent use urgency tactics: exam notifications, fee increases, competition, age limits, limited seats?
+- 2 marks per urgency point used (max 4 points)
+
+### 10. Repeated Mistakes (Max: 6)
+PENALTY parameter. Default 6/6. Deduct 2 per repeated mistake from previous feedback.
+
+### 11. Objection Handling (Max: 3)
+If customer raised objections, did agent handle them?
+- 3/3 if handled well or no objections raised
+
+### 12. Sale Attempt (Max: 5)
+Did the agent try to convert? Asked about payment, suggested course/batch, proposed action?
+- 5/5: Strong sale attempt with clear CTA
+- 0/5: Pure enquiry with zero sales effort
+
+### 13. Further Assistance (Max: 3)
+Did the agent ask "anything else?" and mention sharing details via WhatsApp?
+- 2 points for "anything else", 1 point for WhatsApp mention
+
+### 14. Closing (Max: 5)
+Proper closing with thank you + follow-up scheduling + best wishes?
+- 2 points for thank you, 2 for follow-up, 1 for best wishes
+
+### 15. Call Handling Behavior (Max: 5)
+Agent talk ratio, call duration, who ended the call?
+- Deduct for: agent speaking too little (<30%) or too much (>85%), very short call (<1 min), customer ending call
+
+## Output Format
+Respond with ONLY valid JSON:
+{{
+    "greeting": {{"score": <n>, "max_score": 5, "evidence": ["..."], "feedback": "...", "improvement": "..."}},
+    "probing": {{"score": <n>, "max_score": 5, "evidence": ["..."], "feedback": "...", "improvement": "..."}},
+    "lead_source": {{"score": <n>, "max_score": 5, "evidence": ["..."], "feedback": "...", "improvement": "..."}},
+    "course_pitch": {{"score": <n>, "max_score": 5, "evidence": ["..."], "feedback": "...", "improvement": "..."}},
+    "false_commitment": {{"score": <n>, "max_score": 5, "evidence": ["..."], "feedback": "...", "improvement": "..."}},
+    "six_level_strategy": {{"score": <n>, "max_score": 10, "evidence": ["..."], "feedback": "...", "improvement": "..."}},
+    "presentation": {{"score": <n>, "max_score": 10, "evidence": ["..."], "feedback": "...", "improvement": "..."}},
+    "urgency_need": {{"score": <n>, "max_score": 10, "evidence": ["..."], "feedback": "...", "improvement": "..."}},
+    "urgency_explanation": {{"score": <n>, "max_score": 8, "evidence": ["..."], "feedback": "...", "improvement": "..."}},
+    "repeated_mistakes": {{"score": <n>, "max_score": 6, "evidence": ["..."], "feedback": "...", "improvement": "..."}},
+    "objection_handling": {{"score": <n>, "max_score": 3, "evidence": ["..."], "feedback": "...", "improvement": "..."}},
+    "sale_attempt": {{"score": <n>, "max_score": 5, "evidence": ["..."], "feedback": "...", "improvement": "..."}},
+    "further_assistance": {{"score": <n>, "max_score": 3, "evidence": ["..."], "feedback": "...", "improvement": "..."}},
+    "closing": {{"score": <n>, "max_score": 5, "evidence": ["..."], "feedback": "...", "improvement": "..."}},
+    "call_handling": {{"score": <n>, "max_score": 5, "evidence": ["..."], "feedback": "...", "improvement": "..."}},
+    "overall_strengths": ["..."],
+    "overall_weaknesses": ["..."],
+    "critical_issues": ["..."],
+    "call_summary": "..."
+}}
+
+## Transcript
+{transcript}"""
+
+
 def _format_rule_context(rule_scores: dict) -> str:
     """Format rule engine scores as context for the LLM."""
     lines = []

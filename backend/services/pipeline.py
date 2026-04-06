@@ -11,6 +11,7 @@ from backend.models.call import Call
 from backend.models.report import QAReport
 from backend.services.audio_preprocessor import preprocess_audio, HAS_AUDIO_LIBS
 from backend.services.fallback_stt import transcribe_with_openai_api
+from backend.services.sarvam_stt import is_sarvam_supported, transcribe_with_sarvam
 from backend.services.speaker_labeler import label_speakers, format_transcript
 from backend.services.rule_engine import run_all_rules
 from backend.services.llm_evaluator import evaluate_with_llm
@@ -49,30 +50,29 @@ async def process_call(call_id: str):
 
             # --- Stage 2: Transcribe + Diarize ---
             await _update_status(db, call, "TRANSCRIBING")
-            if HAS_AUDIO_LIBS:
+
+            use_sarvam = is_sarvam_supported(call.call_language) and settings.sarvam_api_key
+
+            if use_sarvam:
+                # Indian language → Sarvam AI (with built-in diarization)
+                logger.info(f"Using Sarvam AI for {call.call_language} transcription")
+                transcription = transcribe_with_sarvam(processed_path, call.call_language)
+                call.stt_engine_used = "sarvam_ai"
+            elif HAS_AUDIO_LIBS:
                 try:
                     from backend.services.transcription import transcribe_and_diarize
                     transcription = transcribe_and_diarize(processed_path)
+                    call.stt_engine_used = "whisperx"
                 except Exception as e:
                     logger.warning(f"WhisperX failed: {e}. Trying OpenAI API fallback.")
-                    transcription = transcribe_with_openai_api(processed_path)
-                    transcription["_fallback"] = True
+                    transcription = transcribe_with_openai_api(processed_path, call.call_language)
+                    call.stt_engine_used = "openai_api"
             else:
-                logger.info("Using OpenAI API for transcription (cloud mode)")
-                transcription = transcribe_with_openai_api(processed_path)
-                transcription["_fallback"] = True
-
-            # Check confidence - fallback if too low
-            if (
-                transcription.get("confidence", 1.0) < settings.whisper_confidence_threshold
-                and not transcription.get("_fallback")
-            ):
-                logger.info(f"Low confidence ({transcription['confidence']}), using OpenAI API fallback")
-                transcription = transcribe_with_openai_api(processed_path)
-                transcription["_fallback"] = True
+                logger.info("Using OpenAI API for transcription")
+                transcription = transcribe_with_openai_api(processed_path, call.call_language)
+                call.stt_engine_used = "openai_api"
 
             call.whisper_confidence = transcription["confidence"]
-            call.stt_engine_used = "openai_api" if transcription.get("_fallback") else "whisperx"
 
             # --- Stage 3: Label speakers ---
             segments = label_speakers(transcription["segments"])
@@ -82,15 +82,26 @@ async def process_call(call_id: str):
             # --- Stage 4: Evaluate ---
             await _update_status(db, call, "EVALUATING")
 
-            # Rule-based scoring
-            rule_scores = run_all_rules(segments)
+            is_english = call.call_language in ("en", None, "")
 
-            # LLM scoring
-            llm_scores = evaluate_with_llm(
-                transcript_text,
-                rule_scores,
-                previous_feedback=call.previous_feedback,
-            )
+            if is_english:
+                # Hybrid mode: rule engine + LLM
+                rule_scores = run_all_rules(segments)
+                llm_scores = evaluate_with_llm(
+                    transcript_text,
+                    rule_scores,
+                    previous_feedback=call.previous_feedback,
+                )
+            else:
+                # Full LLM mode for non-English calls
+                logger.info(f"Non-English call ({call.call_language}), using full LLM evaluation")
+                rule_scores = {}
+                llm_scores = evaluate_with_llm(
+                    transcript_text,
+                    rule_scores,
+                    previous_feedback=call.previous_feedback,
+                    full_llm_mode=True,
+                )
 
             # Merge scores
             report_data = merge_scores(rule_scores, llm_scores)
@@ -126,3 +137,27 @@ async def process_call(call_id: str):
 async def _update_status(db, call: Call, status: str):
     call.status = status
     await db.commit()
+
+
+def _map_sarvam_speakers(segments: list[dict]) -> list[dict]:
+    """Map Sarvam speaker IDs (speaker_0, speaker_1) to Agent/Customer.
+    First speaker is assumed to be Agent (typically the one who initiates the call)."""
+    if not segments:
+        return segments
+
+    speakers = {}
+    for seg in segments:
+        spk = seg.get("speaker", "UNKNOWN")
+        if spk not in speakers:
+            speakers[spk] = len(speakers)
+
+    # First speaker encountered = Agent
+    first_speaker = segments[0].get("speaker", "UNKNOWN")
+
+    for seg in segments:
+        if seg.get("speaker") == first_speaker:
+            seg["speaker"] = "Agent"
+        else:
+            seg["speaker"] = "Customer"
+
+    return segments

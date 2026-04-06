@@ -19,21 +19,34 @@ export default function CallDetailPage({ params }: { params: Promise<{ id: strin
   const [error, setError] = useState("");
 
   useEffect(() => {
+    let retryTimer: ReturnType<typeof setTimeout>;
+
     async function load() {
       try {
         const data = await getCall(id);
         setCall(data);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to load call");
-      } finally {
+        setError("");
         setLoading(false);
+      } catch (err) {
+        // Retry on 500 (proxy timeout during processing)
+        setLoading(false);
+        setError(err instanceof Error ? err.message : "Failed to load call");
+        retryTimer = setTimeout(load, 5000);
       }
     }
     load();
+
+    return () => clearTimeout(retryTimer);
   }, [id]);
 
   if (loading) return <p className="text-gray-400">Loading...</p>;
-  if (error) return <p className="text-red-600">{error}</p>;
+  if (error && !call) return (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+      <p className="text-gray-600 font-medium">Processing your audio file...</p>
+      <p className="text-gray-400 text-sm mt-2">This may take a few minutes for long recordings.</p>
+    </div>
+  );
   if (!call) return <p className="text-gray-400">Call not found.</p>;
 
   const isProcessing = !["COMPLETED", "FAILED"].includes(call.status);

@@ -7,25 +7,41 @@ import time
 from openai import OpenAI
 
 from backend.config import settings
-from backend.services.prompts import SYSTEM_PROMPT, build_evaluation_prompt, PROMPT_VERSION
+from backend.services.prompts import SYSTEM_PROMPT, build_evaluation_prompt, build_full_evaluation_prompt, PROMPT_VERSION
 
 logger = logging.getLogger(__name__)
 
-# Expected keys in GPT-4o response
+# Expected keys in GPT-4o response (hybrid mode — English calls)
 LLM_SCORED_PARAMS = [
     "course_pitch", "false_commitment", "presentation",
     "urgency_need", "repeated_mistakes", "objection_handling", "sale_attempt",
 ]
 
+# All parameters (full LLM mode — non-English calls)
+ALL_SCORED_PARAMS = [
+    "greeting", "probing", "lead_source", "course_pitch", "false_commitment",
+    "six_level_strategy", "presentation", "urgency_need", "urgency_explanation",
+    "repeated_mistakes", "objection_handling", "sale_attempt",
+    "further_assistance", "closing", "call_handling",
+]
+
 # Max scores for validation
 MAX_SCORES = {
+    "greeting": 5,
+    "probing": 5,
+    "lead_source": 5,
     "course_pitch": 5,
     "false_commitment": 5,
+    "six_level_strategy": 10,
     "presentation": 10,
     "urgency_need": 10,
+    "urgency_explanation": 8,
     "repeated_mistakes": 6,
     "objection_handling": 3,
     "sale_attempt": 5,
+    "further_assistance": 3,
+    "closing": 5,
+    "call_handling": 5,
 }
 
 
@@ -33,6 +49,7 @@ def evaluate_with_llm(
     transcript: str,
     rule_scores: dict,
     previous_feedback: str | None = None,
+    full_llm_mode: bool = False,
 ) -> dict:
     """
     Send transcript to GPT-4o for evaluation of reasoning-heavy parameters.
@@ -43,7 +60,13 @@ def evaluate_with_llm(
     - _meta: model, prompt_version, duration_ms
     """
     client = OpenAI(api_key=settings.openai_api_key)
-    prompt = build_evaluation_prompt(transcript, rule_scores, previous_feedback)
+
+    if full_llm_mode:
+        prompt = build_full_evaluation_prompt(transcript, previous_feedback)
+        params_to_validate = ALL_SCORED_PARAMS
+    else:
+        prompt = build_evaluation_prompt(transcript, rule_scores, previous_feedback)
+        params_to_validate = LLM_SCORED_PARAMS
 
     start_time = time.time()
 
@@ -70,7 +93,7 @@ def evaluate_with_llm(
         raise ValueError(f"LLM returned invalid JSON: {e}")
 
     # Validate and clamp scores
-    for param in LLM_SCORED_PARAMS:
+    for param in params_to_validate:
         if param not in result:
             logger.warning(f"Missing parameter in LLM response: {param}")
             result[param] = {

@@ -32,12 +32,13 @@ export default function CallStatusTracker({ callId, initialStatus }: CallStatusT
         setStatus(data.status as CallStatus);
         if (data.error_message) setError(data.error_message);
         if (data.status === "COMPLETED") {
+          clearInterval(interval);
           router.push(`/reports/${callId}`);
         }
       } catch {
-        // Ignore polling errors
+        // Polling error (backend busy processing) — keep trying
       }
-    }, 3000);
+    }, 5000);
 
     return () => clearInterval(interval);
   }, [callId, status, router]);
